@@ -3,65 +3,46 @@ import { Pedido, ProductoPedido } from "@/app/models/Pedido";
 import { ObjectId } from "mongodb";
 import { NextResponse } from "next/server";
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url);
-
-    const page = Number(searchParams.get("page")) || 1;
-    const limit = 6;
-    const skip = (page - 1) * limit;
-
     const collection = await getPedidosCollection();
-
-    const total = await collection.countDocuments();
 
     const pedidos = await collection
       .find()
       .sort({ fechaCreacion: -1 })
-      .skip(skip)
-      .limit(limit)
-      .toArray();
+      .toArray(); // 🔥 traer TODOS
 
-   const pedidosConEstadoCalculado = pedidos.map((pedido) => {
+    const pedidosConEstadoCalculado = pedidos.map((pedido) => {
+      if (!pedido.fechaLimitePago) return pedido;
 
-  if (!pedido.fechaLimitePago) return pedido;
+      const fechaLimite = new Date(pedido.fechaLimitePago);
+      const hoy = new Date();
 
-  const fechaLimite = new Date(pedido.fechaLimitePago);
-  const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
+      fechaLimite.setHours(0, 0, 0, 0);
 
-  hoy.setHours(0,0,0,0);
-  fechaLimite.setHours(0,0,0,0);
+      const diff = fechaLimite.getTime() - hoy.getTime();
+      const horasRestantes = diff / (1000 * 60 * 60);
 
-  const diff = fechaLimite.getTime() - hoy.getTime();
-  const horasRestantes = diff / (1000 * 60 * 60);
+      if (pedido.estado === "pendiente") {
+        if (hoy > fechaLimite) {
+          return { ...pedido, estado: "retrasado" };
+        }
 
-  if (pedido.estado === "pendiente") {
+        if (horasRestantes <= 6) {
+          return { ...pedido, estado: "aviso6h" };
+        }
 
-    if (hoy > fechaLimite) {
-      return { ...pedido, estado: "retrasado" };
-    }
+        if (horasRestantes <= 12) {
+          return { ...pedido, estado: "aviso12h" };
+        }
+      }
 
-    if (horasRestantes <= 6) {
-      return { ...pedido, estado: "aviso6h" };
-    }
-
-    if (horasRestantes <= 12) {
-      return { ...pedido, estado: "aviso12h" };
-    }
-
-  }
-
-  return pedido;
-});
+      return pedido;
+    });
 
     return NextResponse.json({
       data: pedidosConEstadoCalculado,
-      pagination: {
-        total,
-        page,
-        totalPages: Math.ceil(total / limit),
-        limit,
-      },
     });
 
   } catch (error) {
