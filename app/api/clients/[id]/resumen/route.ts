@@ -44,6 +44,7 @@ export async function GET(
     let pagados = 0;
     let pendientes = 0;
     let retrasados = 0;
+    let total = 0
 
     const pedidosProcesados = pedidos.map((pedido) => {
       let estadoFinal = pedido.estado;
@@ -56,7 +57,18 @@ export async function GET(
         estadoFinal = "retrasado";
       }
 
-      if (estadoFinal === "pagado") pagados++;
+      if (estadoFinal === "pagado") {
+       pagados++;
+
+        if (
+          pedido.fechaLimitePago &&
+          new Date(pedido.fechaLimitePago) < ahora
+        ) {
+          estadoFinal = "pagado_con_retraso";
+        }
+
+        total += pedido.total || 0;
+      };
       if (estadoFinal === "pendiente") pendientes++;
       if (estadoFinal === "retrasado") retrasados++;
 
@@ -73,6 +85,7 @@ export async function GET(
         pagados,
         pendientes,
         retrasados,
+        total
       },
       pedidos: pedidosProcesados,
     });
